@@ -599,7 +599,7 @@ Optional Features: y/n
   CONFIG_MP4            MPEG-4 AAC (.mp4, .m4a, .m4b)                   [auto]
   CONFIG_MPC            libmpcdec (Musepack .mpc, .mpp, .mp+)           [auto]
   CONFIG_MPRIS          MPRIS                                           [auto]
-  CONFIG_OPENSSL        HTTPS support via OpenSSL                      [auto]
+  CONFIG_OPENSSL        HTTPS support via OpenSSL                       [auto]
   CONFIG_OPUS           Opus (.opus)                                    [auto]
   CONFIG_OSS            Open Sound System                               [auto]
   CONFIG_PULSE          native PulseAudio output                        [auto]
