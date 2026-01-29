@@ -65,7 +65,7 @@ static int seek_func(void *datasource, ogg_int64_t offset, int whence)
 {
 	struct input_plugin_data *ip_data = datasource;
 
-	if (lseek(ip_data->fd, offset, whence) == -1)
+	if (net_lseek(ip_data->fd, offset, whence) == -1)
 		return -1;
 	return 0;
 }
@@ -75,7 +75,7 @@ static int close_func(void *datasource)
 	struct input_plugin_data *ip_data = datasource;
 	int rc;
 
-	rc = close(ip_data->fd);
+	rc = net_close(ip_data->fd);
 	ip_data->fd = -1;
 	return rc;
 }
@@ -85,7 +85,7 @@ static long tell_func(void *datasource)
 	struct input_plugin_data *ip_data = datasource;
 	off_t off;
 
-	off = lseek(ip_data->fd, 0, SEEK_CUR);
+	off = net_lseek(ip_data->fd, 0, SEEK_CUR);
 	return (off == -1) ? -1 : off;
 }
 

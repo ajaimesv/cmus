@@ -46,7 +46,7 @@ static int read_func(void *datasource, unsigned char *ptr, int size)
 static int seek_func(void *datasource, opus_int64 offset, int whence)
 {
 	struct input_plugin_data *ip_data = datasource;
-	return lseek(ip_data->fd, offset, whence);
+	return net_lseek(ip_data->fd, offset, whence);
 }
 
 static int close_func(void *datasource)
@@ -55,7 +55,7 @@ static int close_func(void *datasource)
 	int rc;
 
 	ip_data = datasource;
-	rc = close(ip_data->fd);
+	rc = net_close(ip_data->fd);
 	ip_data->fd = -1;
 	return rc;
 }
@@ -63,7 +63,7 @@ static int close_func(void *datasource)
 static opus_int64 tell_func(void *datasource)
 {
 	struct input_plugin_data *ip_data = datasource;
-	return lseek(ip_data->fd, 0, SEEK_CUR);
+	return net_lseek(ip_data->fd, 0, SEEK_CUR);
 }
 
 static OpusFileCallbacks callbacks = {

@@ -23,6 +23,7 @@
 #include "http.h"
 #include "xmalloc.h"
 #include "file.h"
+#include "net.h"
 #include "path.h"
 #include "utils.h"
 #include "cmus.h"
@@ -211,14 +212,21 @@ static int do_http_get(struct http_get *hg, const char *uri, int redirections)
 	hg->proxy = NULL;
 	hg->code = -1;
 	hg->fd = -1;
+	hg->proxy_tunnel = 0;
 	if (http_parse_uri(uri, &hg->uri))
 		return -IP_ERROR_INVALID_URI;
 
 	if (http_open(hg, http_connection_timeout))
 		return -IP_ERROR_ERRNO;
 
-	keyvals_add(&h, "Host", xstrdup(hg->uri.host));
-	if (hg->proxy && hg->proxy->user && hg->proxy->pass)
+	if ((hg->uri.https && hg->uri.port != 443) || (!hg->uri.https && hg->uri.port != 80)) {
+		char hostbuf[512];
+		snprintf(hostbuf, sizeof(hostbuf), "%s:%d", hg->uri.host, hg->uri.port);
+		keyvals_add(&h, "Host", xstrdup(hostbuf));
+	} else {
+		keyvals_add(&h, "Host", xstrdup(hg->uri.host));
+	}
+	if (hg->proxy && hg->proxy->user && hg->proxy->pass && !hg->proxy_tunnel)
 		keyvals_add_basic_auth(&h, hg->proxy->user, hg->proxy->pass, "Proxy-Authorization");
 	keyvals_add(&h, "User-Agent", xstrdup("cmus/" VERSION));
 	keyvals_add(&h, "Icy-MetaData", xstrdup("1"));
@@ -260,7 +268,7 @@ static int do_http_get(struct http_get *hg, const char *uri, int redirections)
 
 		redirloc = xstrdup(val);
 		http_get_free(hg);
-		close(hg->fd);
+		net_close(hg->fd);
 
 		rc = do_http_get(hg, redirloc, redirections);
 
@@ -281,7 +289,7 @@ static int setup_remote(struct input_plugin *ip, const struct keyval *headers, i
 		ip->ops = get_ops_by_mime_type(val);
 		if (ip->ops == NULL) {
 			d_print("unsupported content type: %s\n", val);
-			close(sock);
+			net_close(sock);
 			return -IP_ERROR_FILE_FORMAT;
 		}
 	} else {
@@ -291,7 +299,7 @@ static int setup_remote(struct input_plugin *ip, const struct keyval *headers, i
 		ip->ops = get_ops_by_mime_type(type);
 		if (ip->ops == NULL) {
 			d_print("unsupported content type: %s\n", type);
-			close(sock);
+			net_close(sock);
 			return -IP_ERROR_FILE_FORMAT;
 		}
 	}
@@ -345,7 +353,7 @@ static int handle_line(void *data, const char *uri)
 		rpd->ip->http_code = hg.code;
 		rpd->ip->http_reason = hg.reason;
 		if (hg.fd >= 0)
-			close(hg.fd);
+			net_close(hg.fd);
 
 		hg.reason = NULL;
 		http_get_free(&hg);
@@ -364,7 +372,7 @@ static int read_playlist(struct input_plugin *ip, int sock)
 	size_t size;
 
 	body = http_read_body(sock, &size, http_read_timeout);
-	close(sock);
+	net_close(sock);
 	if (!body)
 		return -IP_ERROR_ERRNO;
 
@@ -435,9 +443,9 @@ static void ip_reset(struct input_plugin *ip, int close_fd)
 	ip_init(ip, ip->data.filename);
 	if (fd != -1) {
 		if (close_fd)
-			close(fd);
+			net_close(fd);
 		else {
-			lseek(fd, 0, SEEK_SET);
+			net_lseek(fd, 0, SEEK_SET);
 			ip->data.fd = fd;
 		}
 	}
@@ -658,7 +666,7 @@ int ip_close(struct input_plugin *ip)
 	rc = ip->ops->close(&ip->data);
 	BUG_ON(ip->data.private);
 	if (ip->data.fd != -1)
-		close(ip->data.fd);
+		net_close(ip->data.fd);
 	free(ip->data.metadata);
 	free(ip->data.icy_name);
 	free(ip->data.icy_genre);
@@ -682,20 +690,22 @@ int ip_read(struct input_plugin *ip, char *buffer, int count)
 
 	BUG_ON(count <= 0);
 
-	FD_ZERO(&readfds);
-	FD_SET(ip->data.fd, &readfds);
-	/* zero timeout -> return immediately */
-	tv.tv_sec = 0;
-	tv.tv_usec = 50e3;
-	rc = select(ip->data.fd + 1, &readfds, NULL, NULL, &tv);
-	if (rc == -1) {
-		if (errno == EINTR)
+	if (!net_has_pending(ip->data.fd)) {
+		FD_ZERO(&readfds);
+		FD_SET(ip->data.fd, &readfds);
+		/* zero timeout -> return immediately */
+		tv.tv_sec = 0;
+		tv.tv_usec = 50e3;
+		rc = select(ip->data.fd + 1, &readfds, NULL, NULL, &tv);
+		if (rc == -1) {
+			if (errno == EINTR)
+				errno = EAGAIN;
+			return -1;
+		}
+		if (rc == 0) {
 			errno = EAGAIN;
-		return -1;
-	}
-	if (rc == 0) {
-		errno = EAGAIN;
-		return -1;
+			return -1;
+		}
 	}
 
 	buf = buffer;

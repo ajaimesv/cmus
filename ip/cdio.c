@@ -193,7 +193,7 @@ end:
 
 	if (rc < 0) {
 		if (ip_data->fd != -1)
-			close(ip_data->fd);
+			net_close(ip_data->fd);
 		ip_data->fd = -1;
 	}
 
@@ -207,7 +207,7 @@ static int libcdio_close(struct input_plugin_data *ip_data)
 	struct cdda_private *priv = ip_data->private;
 
 	if (ip_data->fd != -1)
-		close(ip_data->fd);
+		net_close(ip_data->fd);
 	ip_data->fd = -1;
 
 	if (strcmp(priv->disc_id, cached.disc_id) != 0 || strcmp(priv->device, cached.device) != 0) {

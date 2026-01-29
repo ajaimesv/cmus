@@ -73,6 +73,16 @@ check_coreaudio()
 	return 1
 }
 
+check_openssl()
+{
+	if pkg_config OPENSSL "openssl" "" "-lssl -lcrypto"
+	then
+		HAVE_OPENSSL=y
+		return 0
+	fi
+	return 1
+}
+
 wcwidth_code="
 #include <wchar.h>
 
@@ -554,6 +564,7 @@ HAVE_BYTESWAP_H=n
 HAVE_STRDUP=n
 HAVE_STRNDUP=n
 HAVE_SAMPLERATE=n
+HAVE_OPENSSL=n
 # unset CONFIG_* variables: if check succeeds 'y', otherwise 'n'
 
 USAGE="
@@ -588,6 +599,7 @@ Optional Features: y/n
   CONFIG_MP4            MPEG-4 AAC (.mp4, .m4a, .m4b)                   [auto]
   CONFIG_MPC            libmpcdec (Musepack .mpc, .mpp, .mp+)           [auto]
   CONFIG_MPRIS          MPRIS                                           [auto]
+  CONFIG_OPENSSL        HTTPS support via OpenSSL                      [auto]
   CONFIG_OPUS           Opus (.opus)                                    [auto]
   CONFIG_OSS            Open Sound System                               [auto]
   CONFIG_PULSE          native PulseAudio output                        [auto]
@@ -653,6 +665,7 @@ check check_mpc        CONFIG_MPC
 check check_vorbis     CONFIG_VORBIS
 check check_opus       CONFIG_OPUS
 check check_libsystemd CONFIG_MPRIS
+check check_openssl    CONFIG_OPENSSL
 check check_wavpack    CONFIG_WAVPACK
 check check_mp4        CONFIG_MP4
 check check_aac        CONFIG_AAC
@@ -705,6 +718,7 @@ config_header config/utils.h HAVE_BYTESWAP_H
 config_header config/iconv.h HAVE_ICONV
 config_header config/wcwidth.h HAVE_WCWIDTH
 config_header config/samplerate.h HAVE_SAMPLERATE
+config_header config/openssl.h HAVE_OPENSSL
 config_header config/xmalloc.h HAVE_STRDUP HAVE_STRNDUP
 
 CFLAGS="${CFLAGS} -DHAVE_CONFIG"

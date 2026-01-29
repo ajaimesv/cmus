@@ -38,6 +38,7 @@ struct http_uri {
 	char *host;
 	char *path;
 	int port;
+	int https;
 };
 
 struct http_get {
@@ -47,6 +48,7 @@ struct http_get {
 	struct keyval *headers;
 	char *reason;
 	int code;
+	int proxy_tunnel;
 };
 
 int http_parse_uri(const char *uri, struct http_uri *u);

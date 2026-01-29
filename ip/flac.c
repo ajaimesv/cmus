@@ -76,7 +76,7 @@ static T(ReadStatus) read_cb(const Dec *dec, unsigned char *buf, size_t *size, v
 	if (*size == 0)
 		return E(READ_STATUS_CONTINUE);
 
-	rc = read(ip_data->fd, buf, *size);
+	rc = net_read(ip_data->fd, buf, *size);
 	if (rc == -1) {
 		*size = 0;
 		if (errno == EINTR || errno == EAGAIN) {
@@ -104,7 +104,7 @@ static T(SeekStatus) seek_cb(const Dec *dec, uint64_t offset, void *data)
 
 	if (priv->len == UINT64_MAX)
 		return E(SEEK_STATUS_ERROR);
-	off = lseek(ip_data->fd, offset, SEEK_SET);
+	off = net_lseek(ip_data->fd, offset, SEEK_SET);
 	if (off == -1) {
 		return E(SEEK_STATUS_ERROR);
 	}
@@ -347,9 +347,9 @@ static int flac_open(struct input_plugin_data *ip_data)
 	if (ip_data->remote) {
 		priv->len = UINT64_MAX;
 	} else {
-		off_t off = lseek(ip_data->fd, 0, SEEK_END);
+		off_t off = net_lseek(ip_data->fd, 0, SEEK_END);
 
-		if (off == -1 || lseek(ip_data->fd, 0, SEEK_SET) == -1) {
+		if (off == -1 || net_lseek(ip_data->fd, 0, SEEK_SET) == -1) {
 			int save = errno;
 
 			F(delete)(dec);

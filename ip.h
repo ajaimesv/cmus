@@ -22,6 +22,7 @@
 #include "keyval.h"
 #include "sf.h"
 #include "channelmap.h"
+#include "net.h"
 
 #ifndef __GNUC__
 #include <fcntl.h>

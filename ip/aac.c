@@ -426,13 +426,13 @@ static int aac_duration(struct input_plugin_data *ip_data)
 	int samples = 0, bytes = 0, frames = 0;
 	off_t file_size;
 
-	file_size = lseek(ip_data->fd, 0, SEEK_END);
+	file_size = net_lseek(ip_data->fd, 0, SEEK_END);
 	if (file_size == -1)
 		return -IP_ERROR_FUNCTION_NOT_SUPPORTED;
 
 	/* Seek to the middle of the file. There is almost always silence at
 	 * the beginning, which gives wrong results. */
-	if (lseek(ip_data->fd, file_size/2, SEEK_SET) == -1)
+	if (net_lseek(ip_data->fd, file_size/2, SEEK_SET) == -1)
 		return -IP_ERROR_FUNCTION_NOT_SUPPORTED;
 
 	priv->rbuf_pos = 0;

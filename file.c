@@ -18,6 +18,7 @@
 
 #include "file.h"
 #include "xmalloc.h"
+#include "net.h"
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -35,7 +36,7 @@ ssize_t read_all(int fd, void *buf, size_t count)
 	do {
 		ssize_t rc;
 
-		rc = read(fd, buffer + pos, count - pos);
+		rc = net_read(fd, buffer + pos, count - pos);
 		if (rc == -1) {
 			if (errno == EINTR || errno == EAGAIN)
 				continue;
@@ -58,7 +59,7 @@ ssize_t write_all(int fd, const void *buf, size_t count)
 	do {
 		int rc;
 
-		rc = write(fd, buffer, count);
+		rc = net_write(fd, buffer, count);
 		if (rc == -1) {
 			if (errno == EINTR || errno == EAGAIN)
 				continue;

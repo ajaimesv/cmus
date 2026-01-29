@@ -195,7 +195,7 @@ static inline void ms_sleep(int ms)
 
 static inline int is_http_url(const char *name)
 {
-	return strncmp(name, "http://", 7) == 0;
+	return strncmp(name, "http://", 7) == 0 || strncmp(name, "https://", 8) == 0;
 }
 
 static inline int is_cdda_url(const char *name)

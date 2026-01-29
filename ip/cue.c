@@ -163,7 +163,7 @@ static int cue_close(struct input_plugin_data *ip_data)
 {
 	struct cue_private *priv = ip_data->private;
 
-	close(ip_data->fd);
+	net_close(ip_data->fd);
 	ip_data->fd = -1;
 
 	ip_delete(priv->child);

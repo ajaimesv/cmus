@@ -48,7 +48,7 @@ static off_t lseek_func(void *datasource, off_t offset, int whence)
 {
 	struct input_plugin_data *ip_data = datasource;
 
-	return lseek(ip_data->fd, offset, whence);
+	return net_lseek(ip_data->fd, offset, whence);
 }
 
 static int close_func(void *datasource)
@@ -56,7 +56,7 @@ static int close_func(void *datasource)
 	struct input_plugin_data *ip_data = datasource;
 	int rc;
 
-	rc = ip_data->fd != -1 ? close(ip_data->fd) : 0;
+	rc = ip_data->fd != -1 ? net_close(ip_data->fd) : 0;
 	ip_data->fd = -1;
 	return rc;
 }

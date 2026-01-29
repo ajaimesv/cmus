@@ -19,6 +19,7 @@
 #include "http.h"
 #include "file.h"
 #include "debug.h"
+#include "net.h"
 #include "xmalloc.h"
 #include "gbuf.h"
 
@@ -53,10 +54,17 @@ int http_parse_uri(const char *uri, struct http_uri *u)
 	u->host = NULL;
 	u->path = NULL;
 	u->port = 80;
+	u->https = 0;
 
-	if (strncmp(uri, "http://", 7))
+	if (strncmp(uri, "http://", 7) == 0) {
+		str = uri + 7;
+	} else if (strncmp(uri, "https://", 8) == 0) {
+		u->https = 1;
+		u->port = 443;
+		str = uri + 8;
+	} else {
 		return -1;
-	str = uri + 7;
+	}
 	host_start = str;
 
 	/* [/path] */
@@ -130,7 +138,10 @@ void http_free_uri(struct http_uri *u)
 	u->pass = NULL;
 	u->host = NULL;
 	u->path = NULL;
+	u->https = 0;
 }
+
+static int http_proxy_connect(struct http_get *hg, int timeout_ms);
 
 int http_open(struct http_get *hg, int timeout_ms)
 {
@@ -147,7 +158,13 @@ int http_open(struct http_get *hg, int timeout_ms)
 	int save, flags, rc;
 	char port[16];
 
-	char *proxy = getenv("http_proxy");
+	char *proxy = NULL;
+
+	hg->proxy_tunnel = 0;
+	if (hg->uri.https)
+		proxy = getenv("https_proxy");
+	if (proxy == NULL)
+		proxy = getenv("http_proxy");
 	if (proxy) {
 		hg->proxy = xnew(struct http_uri, 1);
 		if (http_parse_uri(proxy, hg->proxy)) {
@@ -213,10 +230,19 @@ int http_open(struct http_get *hg, int timeout_ms)
 	/* restore old flags */
 	if (fcntl(hg->fd, F_SETFL, flags) == -1)
 		goto close_exit;
+	if (hg->uri.https) {
+		if (hg->proxy) {
+			if (http_proxy_connect(hg, timeout_ms))
+				goto close_exit;
+			hg->proxy_tunnel = 1;
+		}
+		if (net_tls_connect(hg->fd, hg->uri.host, timeout_ms))
+			goto close_exit;
+	}
 	return 0;
 close_exit:
 	save = errno;
-	close(hg->fd);
+	net_close(hg->fd);
 	errno = save;
 	return -1;
 }
@@ -244,11 +270,11 @@ static int http_write(int fd, const char *buf, int count, int timeout_ms)
 			continue;
 		}
 		if (rc == 1) {
-			rc = write(fd, buf + pos, count - pos);
-			if (rc == -1) {
-				if (errno == EINTR || errno == EAGAIN)
-					continue;
-				return -1;
+		rc = net_write(fd, buf + pos, count - pos);
+		if (rc == -1) {
+			if (errno == EINTR || errno == EAGAIN)
+				continue;
+			return -1;
 			}
 			pos += rc;
 			if (pos == count)
@@ -263,6 +289,9 @@ static int http_write(int fd, const char *buf, int count, int timeout_ms)
 static int read_timeout(int fd, int timeout_ms)
 {
 	struct timeval tv;
+
+	if (net_has_pending(fd))
+		return 0;
 
 	tv.tv_sec = timeout_ms / 1000;
 	tv.tv_usec = (timeout_ms % 1000) * 1000;
@@ -299,8 +328,10 @@ static int http_read_response(int fd, struct gbuf *buf, int timeout_ms)
 		int rc;
 		char ch;
 
-		rc = read(fd, &ch, 1);
+		rc = net_read(fd, &ch, 1);
 		if (rc == -1) {
+			if (errno == EINTR || errno == EAGAIN)
+				continue;
 			return -1;
 		}
 		if (rc == 0) {
@@ -382,13 +413,67 @@ static int http_parse_response(char *str, struct http_get *hg)
 	return 0;
 }
 
+static int http_proxy_connect(struct http_get *hg, int timeout_ms)
+{
+	struct http_get phg;
+	GBUF(buf);
+	char *encoded = NULL;
+	int rc;
+
+	memset(&phg, 0, sizeof(phg));
+
+	gbuf_add_str(&buf, "CONNECT ");
+	gbuf_add_str(&buf, hg->uri.host);
+	gbuf_addf(&buf, ":%d HTTP/1.0\r\nHost: ", hg->uri.port);
+	gbuf_add_str(&buf, hg->uri.host);
+	gbuf_addf(&buf, ":%d\r\n", hg->uri.port);
+	if (hg->proxy && hg->proxy->user && hg->proxy->pass) {
+		char creds[256];
+
+		snprintf(creds, sizeof(creds), "%s:%s", hg->proxy->user, hg->proxy->pass);
+		encoded = base64_encode(creds);
+		if (encoded) {
+			gbuf_add_str(&buf, "Proxy-Authorization: Basic ");
+			gbuf_add_str(&buf, encoded);
+			gbuf_add_str(&buf, "\r\n");
+		}
+	}
+	gbuf_add_str(&buf, "\r\n");
+
+	rc = http_write(hg->fd, buf.buffer, buf.len, timeout_ms);
+	if (rc)
+		goto out;
+
+	gbuf_clear(&buf);
+	rc = http_read_response(hg->fd, &buf, timeout_ms);
+	if (rc)
+		goto out;
+
+	rc = http_parse_response(buf.buffer, &phg);
+	if (rc)
+		goto out;
+	if (phg.code != 200) {
+		errno = EPROTO;
+		rc = -1;
+	}
+
+out:
+	if (encoded)
+		free(encoded);
+	if (phg.headers)
+		keyvals_free(phg.headers);
+	free(phg.reason);
+	gbuf_free(&buf);
+	return rc;
+}
+
 int http_get(struct http_get *hg, struct keyval *headers, int timeout_ms)
 {
 	GBUF(buf);
 	int i, rc, save;
 
 	gbuf_add_str(&buf, "GET ");
-	gbuf_add_str(&buf, hg->proxy ? hg->uri.uri : hg->uri.path);
+	gbuf_add_str(&buf, (hg->proxy && !hg->proxy_tunnel) ? hg->uri.uri : hg->uri.path);
 	gbuf_add_str(&buf, " HTTP/1.0\r\n");
 	for (i = 0; headers[i].key; i++) {
 		gbuf_add_str(&buf, headers[i].key);

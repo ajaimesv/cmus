@@ -99,7 +99,7 @@ static mpc_bool_t seek_impl(callback_t *data, mpc_int32_t offset)
 {
 	struct input_plugin_data *ip_data = get_ip_data(data);
 
-	if (lseek(ip_data->fd, offset, SEEK_SET) == -1)
+	if (net_lseek(ip_data->fd, offset, SEEK_SET) == -1)
 		return MPC_FALSE;
 	return MPC_TRUE;
 }
@@ -108,7 +108,7 @@ static mpc_int32_t tell_impl(callback_t *data)
 {
 	struct input_plugin_data *ip_data = get_ip_data(data);
 
-	return lseek(ip_data->fd, 0, SEEK_CUR);
+	return net_lseek(ip_data->fd, 0, SEEK_CUR);
 }
 
 static mpc_int32_t get_size_impl(callback_t *data)
@@ -147,8 +147,8 @@ static int mpc_open(struct input_plugin_data *ip_data)
 	*priv = priv_init;
 
 	if (!ip_data->remote) {
-		priv->file_size = lseek(ip_data->fd, 0, SEEK_END);
-		lseek(ip_data->fd, 0, SEEK_SET);
+		priv->file_size = net_lseek(ip_data->fd, 0, SEEK_END);
+		net_lseek(ip_data->fd, 0, SEEK_SET);
 	}
 
 	/* must be before mpc_streaminfo_read() */

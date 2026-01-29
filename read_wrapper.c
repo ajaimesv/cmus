@@ -19,6 +19,7 @@
 #include "read_wrapper.h"
 #include "ip.h"
 #include "file.h"
+#include "net.h"
 
 #include <unistd.h>
 
@@ -28,7 +29,7 @@ ssize_t read_wrapper(struct input_plugin_data *ip_data, void *buffer, size_t cou
 
 	if (ip_data->metaint == 0) {
 		/* no metadata in the stream */
-		return read(ip_data->fd, buffer, count);
+		return net_read(ip_data->fd, buffer, count);
 	}
 
 	if (ip_data->counter == ip_data->metaint) {
@@ -36,7 +37,7 @@ ssize_t read_wrapper(struct input_plugin_data *ip_data, void *buffer, size_t cou
 		unsigned char byte;
 		int len;
 
-		rc = read(ip_data->fd, &byte, 1);
+		rc = net_read(ip_data->fd, &byte, 1);
 		if (rc == -1)
 			return -1;
 		if (rc == 0)
@@ -58,7 +59,7 @@ ssize_t read_wrapper(struct input_plugin_data *ip_data, void *buffer, size_t cou
 	}
 	if (count + ip_data->counter > ip_data->metaint)
 		count = ip_data->metaint - ip_data->counter;
-	rc = read(ip_data->fd, buffer, count);
+	rc = net_read(ip_data->fd, buffer, count);
 	if (rc > 0)
 		ip_data->counter += rc;
 	return rc;

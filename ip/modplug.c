@@ -43,10 +43,10 @@ static int mod_open(struct input_plugin_data *ip_data)
 	ModPlugFile *file;
 	ModPlug_Settings settings;
 
-	size = lseek(ip_data->fd, 0, SEEK_END);
+	size = net_lseek(ip_data->fd, 0, SEEK_END);
 	if (size == -1)
 		return -IP_ERROR_ERRNO;
-	if (lseek(ip_data->fd, 0, SEEK_SET) == -1)
+	if (net_lseek(ip_data->fd, 0, SEEK_SET) == -1)
 		return -IP_ERROR_ERRNO;
 
 	contents = xnew(char, size);
