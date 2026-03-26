@@ -950,7 +950,7 @@ void tree_add_track(struct tree_track *track,
 
 	if (is_http_url(ti->filename)) {
 		artist_name = "<Stream>";
-		album_name = "<Stream>";
+		album_name = ti->title && ti->title[0] ? ti->title : "<Stream>";
 	} else {
 		album_name	= tree_album_name(ti);
 		artist_name	= tree_artist_name(ti);

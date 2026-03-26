@@ -210,6 +210,25 @@ static void add_url(const char *url)
 	add_file(url, 0);
 }
 
+static void add_url_with_title(const char *url, const char *title)
+{
+	struct track_info *ti;
+
+	if (!title || !title[0]) {
+		add_url(url);
+		return;
+	}
+
+	cache_lock();
+	ti = cache_get_ti(url, 0);
+	if (ti)
+		track_info_set_playlist_title(ti, title);
+	cache_unlock();
+
+	if (ti)
+		add_ti(ti);
+}
+
 static void add_cdda(const char *url)
 {
 	char *disc_id = NULL;
@@ -379,12 +398,15 @@ static void add_dir(const char *dirname, const char *root)
 	ptr_array_clear(&files);
 }
 
-static int handle_line(void *data, const char *line)
+static int handle_playlist_entry(void *data, const char *line,
+		const char *title)
 {
 	if (worker_cancelling())
 		return 1;
 
-	if (is_http_url(line) || is_cue_url(line)) {
+	if (is_http_url(line)) {
+		add_url_with_title(line, title);
+	} else if (is_cue_url(line)) {
 		add_url(line);
 	} else {
 		char *absolute = pl_env_var(line, NULL)
@@ -412,7 +434,8 @@ static void add_pl(const char *filename)
 		/* beautiful hack */
 		reverse = jd->add == play_queue_prepend;
 
-		cmus_playlist_for_each(buf, size, reverse, handle_line, cwd);
+		cmus_playlist_for_each_entry(buf, size, reverse,
+				handle_playlist_entry, cwd);
 		free(cwd);
 		munmap(buf, size);
 		add_ti(NULL); // marks end of load

@@ -129,10 +129,15 @@ typedef size_t sort_key_t;
 #define TI_MATCH_TITLE        (1 << 2)
 #define TI_MATCH_ALBUMARTIST  (1 << 3)
 #define TI_MATCH_ALL          (~0)
+#define TRACK_INFO_PLAYLIST_TITLE "cmus:playlist_title"
 
 /* initializes only filename and ref */
 struct track_info *track_info_new(const char *filename);
 void track_info_set_comments(struct track_info *ti, struct keyval *comments);
+void track_info_replace_comments(struct track_info *ti, struct keyval *comments,
+		bool preserve_playlist_title);
+void track_info_set_playlist_title(struct track_info *ti, const char *title);
+const char *track_info_get_playlist_title(const struct track_info *ti);
 
 void track_info_ref(struct track_info *ti);
 void track_info_unref(struct track_info *ti);

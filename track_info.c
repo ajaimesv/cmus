@@ -28,6 +28,7 @@
 #include "ui_curses.h"
 
 #include <string.h>
+#include <strings.h>
 #include <stdatomic.h>
 #include <math.h>
 
@@ -41,13 +42,88 @@ static struct track_info_priv *track_info_to_priv(struct track_info *ti)
 	return container_of(ti, struct track_info_priv, ti);
 }
 
+static void track_info_reset_comment_fields(struct track_info *ti)
+{
+	free(ti->collkey_artist);
+	free(ti->collkey_album);
+	free(ti->collkey_title);
+	free(ti->collkey_genre);
+	free(ti->collkey_comment);
+	free(ti->collkey_albumartist);
+
+	ti->comments = NULL;
+	ti->tracknumber = -1;
+	ti->discnumber = -1;
+	ti->totaldiscs = -1;
+	ti->date = -1;
+	ti->originaldate = -1;
+	ti->rg_track_gain = NAN;
+	ti->rg_track_peak = NAN;
+	ti->rg_album_gain = NAN;
+	ti->rg_album_peak = NAN;
+	ti->output_gain = 0;
+	ti->artist = NULL;
+	ti->album = NULL;
+	ti->title = NULL;
+	ti->genre = NULL;
+	ti->comment = NULL;
+	ti->albumartist = NULL;
+	ti->artistsort = NULL;
+	ti->albumsort = NULL;
+	ti->media = NULL;
+	ti->collkey_artist = NULL;
+	ti->collkey_album = NULL;
+	ti->collkey_title = NULL;
+	ti->collkey_genre = NULL;
+	ti->collkey_comment = NULL;
+	ti->collkey_albumartist = NULL;
+	ti->is_va_compilation = 0;
+	ti->bpm = -1;
+}
+
+static const char *track_info_get_title_from_comments(const struct keyval *comments)
+{
+	const char *title = keyvals_get_val(comments, TRACK_INFO_PLAYLIST_TITLE);
+
+	if (title && title[0])
+		return title;
+
+	return keyvals_get_val(comments, "title");
+}
+
+static struct keyval *keyvals_replace_val(const struct keyval *keyvals,
+		const char *key, const char *val)
+{
+	GROWING_KEYVALS(c);
+	int replaced = 0;
+
+	if (keyvals) {
+		for (int i = 0; keyvals[i].key; i++) {
+			if (strcasecmp(keyvals[i].key, key) == 0) {
+				if (!replaced && val && val[0]) {
+					keyvals_add(&c, key, xstrdup(val));
+					replaced = 1;
+				}
+				continue;
+			}
+			keyvals_add(&c, keyvals[i].key, xstrdup(keyvals[i].val));
+		}
+	}
+
+	if (!replaced && val && val[0])
+		keyvals_add(&c, key, xstrdup(val));
+
+	keyvals_terminate(&c);
+	return c.keyvals;
+}
+
 struct track_info *track_info_new(const char *filename)
 {
 	static _Atomic uint64_t cur_uid = ATOMIC_VAR_INIT(1);
 	uint64_t uid = atomic_fetch_add_explicit(&cur_uid, 1, memory_order_relaxed);
 	BUG_ON(uid == 0);
 
-	struct track_info_priv *priv = xnew(struct track_info_priv, 1);
+	struct track_info_priv *priv = xnew0(struct track_info_priv, 1);
 	atomic_init(&priv->ref_count, 1);
 
 	struct track_info *ti = &priv->ti;
@@ -59,6 +135,10 @@ struct track_info *track_info_new(const char *filename)
 	ti->codec = NULL;
 	ti->codec_profile = NULL;
 	ti->output_gain = 0;
+	ti->bitrate = -1;
+	ti->duration = -1;
+	ti->mtime = -1;
+	track_info_reset_comment_fields(ti);
 
 	return ti;
 }
@@ -68,10 +148,11 @@ void track_info_set_comments(struct track_info *ti, struct keyval *comments) {
 	long int r128_album_gain;
 	long int output_gain;
 
+	track_info_reset_comment_fields(ti);
 	ti->comments = comments;
 	ti->artist = keyvals_get_val(comments, "artist");
 	ti->album = keyvals_get_val(comments, "album");
-	ti->title = keyvals_get_val(comments, "title");
+	ti->title = track_info_get_title_from_comments(comments);
 	ti->tracknumber = comments_get_int(comments, "tracknumber");
 	ti->discnumber = comments_get_int(comments, "discnumber");
 	ti->totaldiscs = comments_get_int(comments, "totaldiscs");
@@ -130,6 +211,48 @@ void track_info_set_comments(struct track_info *ti, struct keyval *comments) {
 	ti->collkey_genre = u_strcasecoll_key0(ti->genre);
 	ti->collkey_comment = u_strcasecoll_key0(ti->comment);
 	ti->collkey_albumartist = u_strcasecoll_key0(ti->albumartist);
+}
+
+void track_info_replace_comments(struct track_info *ti, struct keyval *comments,
+		bool preserve_playlist_title)
+{
+	const char *playlist_title = NULL;
+	struct keyval *new_comments = comments;
+
+	if (preserve_playlist_title && ti->comments) {
+		playlist_title = keyvals_get_val(ti->comments,
+				TRACK_INFO_PLAYLIST_TITLE);
+		if (playlist_title &&
+				!keyvals_get_val(new_comments, TRACK_INFO_PLAYLIST_TITLE)) {
+			new_comments = keyvals_replace_val(comments,
+					TRACK_INFO_PLAYLIST_TITLE, playlist_title);
+			keyvals_free(comments);
+		}
+	}
+
+	if (ti->comments)
+		keyvals_free(ti->comments);
+
+	track_info_set_comments(ti, new_comments);
+}
+
+void track_info_set_playlist_title(struct track_info *ti, const char *title)
+{
+	struct keyval *comments = keyvals_replace_val(ti->comments,
+			TRACK_INFO_PLAYLIST_TITLE, title);
+
+	if (ti->comments)
+		keyvals_free(ti->comments);
+
+	track_info_set_comments(ti, comments);
+}
+
+const char *track_info_get_playlist_title(const struct track_info *ti)
+{
+	if (!ti->comments)
+		return NULL;
+
+	return keyvals_get_val(ti->comments, TRACK_INFO_PLAYLIST_TITLE);
 }
 
 void track_info_ref(struct track_info *ti)

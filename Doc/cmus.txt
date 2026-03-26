@@ -345,10 +345,11 @@ Artists*, *Various*, *VA*, or *V/A*; or if *compilation* or *partofacompilation*
 are set to a truthy value; or if the ID3v2 *TCMP* frame is set). If so, the
 artist is named *<Various Artists>*.
 
-Note: If the filename is a URL, the artist/album tags are set to *<Stream>*. If
-it is a file, cmus sets the artist and/or album tags to *<No Name>* if they are
-not already set. These names will be treated the same way as other names for
-sorting.
+Note: If the filename is a URL, the artist tag is set to *<Stream>* and the
+album tag is set to the stream title when one is available, or *<Stream>*
+otherwise. If it is a file, cmus sets the artist and/or album tags to
+*<No Name>* if they are not already set. These names will be treated the same
+way as other names for sorting.
 
 In general, three levels of sorting are used in the library view: the artist
 name, then the album, and finally the track itself.

@@ -373,7 +373,7 @@ int cmus_is_supported(const char *filename)
 }
 
 struct pl_data {
-	int (*cb)(void *data, const char *line);
+	cmus_playlist_entry_cb cb;
 	void *data;
 };
 
@@ -390,38 +390,187 @@ static int pl_handle_line(void *data, const char *line)
 	if (line[i] == '#')
 		return 0;
 
-	return d->cb(d->data, line);
+	return d->cb(d->data, line + i, NULL);
 }
 
-static int pls_handle_line(void *data, const char *line)
-{
-	struct pl_data *d = data;
+struct pls_entry {
+	int index;
+	char *file;
+	char *title;
+};
 
-	if (strncasecmp(line, "file", 4))
+struct pls_parse_data {
+	struct pls_entry *entries;
+	int count;
+	int alloc;
+};
+
+static int parse_pls_index(const char *key, const char *prefix)
+{
+	char *end;
+	long index;
+
+	if (strncasecmp(key, prefix, strlen(prefix)) != 0)
+		return -1;
+
+	index = strtol(key + strlen(prefix), &end, 10);
+	if (end == key + strlen(prefix) || *end != 0 || index <= 0)
+		return -1;
+
+	return index;
+}
+
+static struct pls_entry *get_pls_entry(struct pls_parse_data *data, int index)
+{
+	for (int i = 0; i < data->count; i++) {
+		if (data->entries[i].index == index)
+			return &data->entries[i];
+	}
+
+	if (data->count == data->alloc) {
+		data->alloc = data->alloc ? data->alloc * 2 : 8;
+		data->entries = xrenew(struct pls_entry, data->entries,
+				data->alloc);
+	}
+
+	struct pls_entry *entry = &data->entries[data->count++];
+	*entry = (struct pls_entry) {
+		.index = index,
+		.file = NULL,
+		.title = NULL,
+	};
+	return entry;
+}
+
+static int parse_pls_line(void *data, const char *line)
+{
+	struct pls_parse_data *pd = data;
+	char *key, *value, *eq;
+	struct pls_entry *entry;
+	int index;
+
+	while (isspace((unsigned char)*line))
+		line++;
+
+	if (*line == 0 || *line == ';' || *line == '[')
 		return 0;
-	line = strchr(line, '=');
-	if (line == NULL)
+
+	eq = strchr(line, '=');
+	if (!eq)
 		return 0;
-	return d->cb(d->data, line + 1);
+
+	key = xstrndup(line, eq - line);
+	strip_trailing_spaces(key);
+
+	value = xstrdup(eq + 1);
+	while (isspace((unsigned char)*value))
+		memmove(value, value + 1, strlen(value));
+	strip_trailing_spaces(value);
+
+	index = parse_pls_index(key, "file");
+	if (index != -1) {
+		entry = get_pls_entry(pd, index);
+		free(entry->file);
+		entry->file = value;
+		free(key);
+		return 0;
+	}
+
+	index = parse_pls_index(key, "title");
+	if (index != -1) {
+		entry = get_pls_entry(pd, index);
+		free(entry->title);
+		entry->title = value;
+		free(key);
+		return 0;
+	}
+
+	free(key);
+	free(value);
+	return 0;
+}
+
+static int pls_entry_cmp(const void *a, const void *b)
+{
+	const struct pls_entry *ea = a;
+	const struct pls_entry *eb = b;
+
+	return ea->index - eb->index;
+}
+
+static int cmus_pls_for_each(const char *buf, int size, int reverse,
+		cmus_playlist_entry_cb cb, void *data)
+{
+	struct pls_parse_data pd = { 0 };
+	int rc = 0;
+
+	buffer_for_each_line(buf, size, parse_pls_line, &pd);
+	qsort(pd.entries, pd.count, sizeof(*pd.entries), pls_entry_cmp);
+
+	if (reverse) {
+		for (int i = pd.count - 1; i >= 0; i--) {
+			if (!pd.entries[i].file)
+				continue;
+			rc = cb(data, pd.entries[i].file, pd.entries[i].title);
+			if (rc)
+				break;
+		}
+	} else {
+		for (int i = 0; i < pd.count; i++) {
+			if (!pd.entries[i].file)
+				continue;
+			rc = cb(data, pd.entries[i].file, pd.entries[i].title);
+			if (rc)
+				break;
+		}
+	}
+
+	for (int i = 0; i < pd.count; i++) {
+		free(pd.entries[i].file);
+		free(pd.entries[i].title);
+	}
+	free(pd.entries);
+
+	return rc;
+}
+
+int cmus_playlist_for_each_entry(const char *buf, int size, int reverse,
+		cmus_playlist_entry_cb cb, void *data)
+{
+	struct pl_data d = { cb, data };
+
+	if (size >= 10 && strncasecmp(buf, "[playlist]", 10) == 0)
+		return cmus_pls_for_each(buf, size, reverse, cb, data);
+
+	if (reverse) {
+		buffer_for_each_line_reverse(buf, size, pl_handle_line, &d);
+	} else {
+		buffer_for_each_line(buf, size, pl_handle_line, &d);
+	}
+	return 0;
+}
+
+struct legacy_playlist_cb_data {
+	int (*cb)(void *data, const char *line);
+	void *data;
+};
+
+static int legacy_playlist_cb(void *data, const char *line, const char *title)
+{
+	struct legacy_playlist_cb_data *d = data;
+
+	(void)title;
+	return d->cb(d->data, line);
 }
 
 int cmus_playlist_for_each(const char *buf, int size, int reverse,
 		int (*cb)(void *data, const char *line),
 		void *data)
 {
-	struct pl_data d = { cb, data };
-	int (*handler)(void *, const char *);
+	struct legacy_playlist_cb_data d = { cb, data };
 
-	handler = pl_handle_line;
-	if (size >= 10 && strncasecmp(buf, "[playlist]", 10) == 0)
-		handler = pls_handle_line;
-
-	if (reverse) {
-		buffer_for_each_line_reverse(buf, size, handler, &d);
-	} else {
-		buffer_for_each_line(buf, size, handler, &d);
-	}
-	return 0;
+	return cmus_playlist_for_each_entry(buf, size, reverse,
+			legacy_playlist_cb, &d);
 }
 
 /* multi-threaded next track requests */

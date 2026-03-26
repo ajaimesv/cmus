@@ -447,6 +447,7 @@ struct track_info *cache_get_ti(const char *filename, int force)
 {
 	unsigned int hash = hash_str(filename);
 	struct track_info *ti;
+	char *playlist_title = NULL;
 	int reload = 0;
 
 	if (pl_env_var(filename, NULL)) {
@@ -464,6 +465,9 @@ struct track_info *cache_get_ti(const char *filename, int force)
 	ti = lookup_cache_entry(filename, hash);
 	if (ti) {
 		if ((!skip_track_info && ti->duration == 0 && !is_http_url(filename)) || force){
+			const char *title = track_info_get_playlist_title(ti);
+			if (title)
+				playlist_title = xstrdup(title);
 			do_cache_remove_ti(ti, hash);
 			ti = NULL;
 			reload = 1;
@@ -482,10 +486,16 @@ struct track_info *cache_get_ti(const char *filename, int force)
 		} else {
 		       	ti = ip_get_ti(filename);
 		}
+		if (ti && playlist_title)
+			track_info_set_playlist_title(ti, playlist_title);
 		if (!ti)
+		{
+			free(playlist_title);
 			return NULL;
+		}
 		add_ti(ti, hash);
 	}
+	free(playlist_title);
 	track_info_ref(ti);
 	return ti;
 }
@@ -528,6 +538,7 @@ struct track_info **cache_refresh(int *count, int force)
 		if (!rc) {
 			// changed
 			struct track_info *new_ti;
+			const char *playlist_title = track_info_get_playlist_title(ti);
 
 			// clear cache-only entries
 			if (force && track_info_unique_ref(ti)) {
@@ -538,6 +549,9 @@ struct track_info **cache_refresh(int *count, int force)
 
 			new_ti = ip_get_ti(ti->filename);
 			if (new_ti) {
+				if (playlist_title)
+					track_info_set_playlist_title(new_ti,
+							playlist_title);
 				add_ti(new_ti, hash);
 
 				if (track_info_unique_ref(ti)) {

@@ -33,6 +33,8 @@ enum file_type {
 };
 
 typedef int (*track_info_cb)(void *data, struct track_info *ti);
+typedef int (*cmus_playlist_entry_cb)(void *data, const char *line,
+		const char *title);
 
 /* lib_for_each, lib_for_each_filtered, pl_for_each, play_queue_for_each */
 typedef int (*for_each_ti_cb)(track_info_cb cb, void *data, void *opaque);
@@ -81,6 +83,8 @@ int cmus_is_supported(const char *filename);
 int cmus_playlist_for_each(const char *buf, int size, int reverse,
 		int (*cb)(void *data, const char *line),
 		void *data);
+int cmus_playlist_for_each_entry(const char *buf, int size, int reverse,
+		cmus_playlist_entry_cb cb, void *data);
 
 void cmus_next(void);
 void cmus_prev(void);
